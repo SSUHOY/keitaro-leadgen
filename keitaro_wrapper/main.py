@@ -21,7 +21,7 @@ from typing import Any
 from fastapi import Depends, FastAPI, HTTPException, Query
 from fastapi.responses import FileResponse, JSONResponse
 from fastapi.staticfiles import StaticFiles
-from sqlalchemy import or_, select, text
+from sqlalchemy import ColumnElement, or_, select, text
 from sqlalchemy.orm import Session
 
 from database import get_db, init_db
@@ -352,7 +352,9 @@ def list_campaigns(
         stmt = stmt.where(Campaign.state == state)
     if search and search.strip():
         term = search.strip()
-        conditions = [Campaign.name.ilike(_like_pattern(term), escape="\\")]
+        conditions: list[ColumnElement[bool]] = [
+            Campaign.name.ilike(_like_pattern(term), escape="\\")
+        ]
         keitaro_id = _to_int(term)
         if keitaro_id is not None:
             conditions.append(Campaign.keitaro_id == keitaro_id)
