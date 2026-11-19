@@ -1,9 +1,3 @@
-"""Клиент Admin API трекера Keitaro.
-
-Запросы выполняются на ``{KEITARO_BASE_URL}/admin_api/v1/<path>``,
-авторизация — через HTTP-заголовок ``Api-Key``.
-"""
-
 from __future__ import annotations
 
 import os
@@ -20,7 +14,7 @@ DEFAULT_TIMEOUT = 30.0
 
 
 class KeitaroAPIError(RuntimeError):
-    """Ошибка обращения к API Keitaro."""
+    """Error raised when a Keitaro API call fails."""
 
     def __init__(self, message: str, status_code: int | None = None) -> None:
         super().__init__(message)
@@ -28,7 +22,7 @@ class KeitaroAPIError(RuntimeError):
 
 
 class KeitaroAPI:
-    """Тонкий синхронный клиент Admin API Keitaro."""
+    """Thin synchronous client for the Keitaro Admin API."""
 
     def __init__(
         self,
@@ -50,7 +44,6 @@ class KeitaroAPI:
 
     @property
     def configured(self) -> bool:
-        """Заданы ли базовый URL и API-ключ."""
         return bool(self.base_url and self.api_key)
 
     def _url(self, path: str) -> str:
@@ -96,20 +89,19 @@ class KeitaroAPI:
                 f"Keitaro вернул ответ не в формате JSON на {method} {url}"
             ) from exc
 
-    # --- методы API ---
+    # --- API Methods ---
 
     def ping(self) -> bool:
-        """Проверить доступность трекера и валидность API-ключа."""
+        """Check the tracker availability and the API key validity."""
         self._request("GET", "campaigns", params={"limit": 1})
         return True
 
     def get_campaigns(self) -> list[dict[str, Any]]:
-        """Получить список кампаний."""
+        """Get the campaign list."""
         data = self._request("GET", "campaigns")
         return self._ensure_list(data, "campaigns")
 
     def get_campaign(self, campaign_id: int) -> dict[str, Any]:
-        """Получить одну кампанию по её id в Keitaro."""
         data = self._request("GET", f"campaigns/{campaign_id}")
         if not isinstance(data, dict):
             raise KeitaroAPIError(
@@ -118,19 +110,19 @@ class KeitaroAPI:
         return data
 
     def get_streams(self, campaign_id: int) -> list[dict[str, Any]]:
-        """Получить потоки (streams) кампании."""
+        """Get the streams of a campaign."""
         data = self._request("GET", f"campaigns/{campaign_id}/streams")
         return self._ensure_list(data, f"streams кампании {campaign_id}")
 
     def get_stream(self, stream_id: int) -> dict[str, Any]:
-        """Получить детальную информацию о конкретном потоке."""
+        """Get detailed information about a single stream."""
         data = self._request("GET", f"streams/{stream_id}")
         if not isinstance(data, dict):
             raise KeitaroAPIError(f"Неожиданный формат ответа для потока {stream_id}")
         return data
     
     def update_stream(self, stream_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-        """Обновить настройки потока (PUT /streams/{stream_id})."""
+        """Update stream settings (PUT /streams/{stream_id})."""
         data = self._request("PUT", f"streams/{stream_id}", json=payload)
         if not isinstance(data, dict):
             raise KeitaroAPIError(f"Неожиданный формат ответа при обновлении потока {stream_id}")
@@ -139,27 +131,21 @@ class KeitaroAPI:
     def manage_offer_in_stream(
         self, stream_id: int, offer_id: int, action: str, share: int = 100
     ) -> dict[str, Any]:
-        """Добавить или удалить один оффер в потоке кампании."""
-        # 1. Получаем текущие данные потока
+        """Add or remove a single offer in a campaign stream."""
         stream_data = self.get_stream(stream_id)
 
-        # Keitaro хранит привязанные офферы в поле 'offers' (список словарей)
         current_offers = self._extract_offers(stream_data)
 
-        # 2. Модифицируем список офферов
         if action == "add":
-            # Проверяем, нет ли уже такого оффера в потоке
             if not any(o.get("offer_id") == offer_id for o in current_offers):
                 current_offers.append(
                     {"offer_id": offer_id, "share": share, "state": "active"}
                 )
         elif action == "remove":
-            # Оставляем все офферы, кроме удаляемого
             current_offers = [o for o in current_offers if o.get("offer_id") != offer_id]
         else:
             raise KeitaroAPIError(f"Неизвестное действие: {action}. Используйте 'add' или 'remove'.")
 
-        # 3. Отправляем полный актуальный объект потока с обновлённым списком офферов
         return self.update_stream(
             stream_id, self._stream_update_payload(stream_data, current_offers)
         )
@@ -167,11 +153,6 @@ class KeitaroAPI:
     def replace_stream_offers(
         self, stream_id: int, offers: list[dict[str, Any]]
     ) -> dict[str, Any]:
-        """Полностью заменить список офферов потока (PUT /streams/{stream_id}).
-
-        Используется редактором: фронтенд присылает итоговый список офферов
-        с долями трафика и состояниями.
-        """
         stream_data = self.get_stream(stream_id)
         normalized = self._normalize_offers(offers)
         return self.update_stream(
@@ -180,13 +161,13 @@ class KeitaroAPI:
 
     @classmethod
     def _extract_offers(cls, stream_data: dict[str, Any]) -> list[dict[str, Any]]:
-        """Достать офферы из ответа Keitaro, оставив только поля для записи."""
+        """Extract offers from a Keitaro response, keeping only the writable fields."""
         raw_offers = stream_data.get("offers")
         return cls._normalize_offers(raw_offers if isinstance(raw_offers, list) else [])
 
     @staticmethod
     def _normalize_offers(offers: list[Any]) -> list[dict[str, Any]]:
-        """Привести офферы к формату OfferStreamRequest: offer_id, share, state."""
+        """Normalize offers to the OfferStreamRequest format: offer_id, share, state."""
         normalized: list[dict[str, Any]] = []
         for item in offers:
             if not isinstance(item, dict) or item.get("offer_id") in (None, ""):
@@ -204,7 +185,7 @@ class KeitaroAPI:
     def _stream_update_payload(
         stream_data: dict[str, Any], offers: list[dict[str, Any]]
     ) -> dict[str, Any]:
-        """Собрать тело запроса на обновление потока, сохранив его настройки."""
+        """Build the stream update request body while keeping the existing settings."""
         payload: dict[str, Any] = {
             "name": stream_data.get("name"),
             "type": stream_data.get("type", "regular"),
@@ -218,25 +199,25 @@ class KeitaroAPI:
             payload["schema"] = stream_data["schema"]
         return payload
 
-    # --- справочники для фронтенда ---
+    # --- dictionaries for the frontend ---
 
     def get_offers(self) -> list[dict[str, Any]]:
-        """Получить список офферов для автокомплита/выбора."""
+        """Get the offer list for autocomplete/selection."""
         data = self._request("GET", "offers")
         return self._ensure_list(data, "offers")
 
     def get_groups(self, type_name: str = "campaigns") -> list[dict[str, Any]]:
-        """Получить список групп (по умолчанию для кампаний)."""
+        """Get the group list (campaigns by default)."""
         data = self._request("GET", "groups", params={"type": type_name})
         return self._ensure_list(data, "groups")
 
     def get_sources(self) -> list[dict[str, Any]]:
-        """Получить список источников трафика."""
+        """Get the traffic source list."""
         data = self._request("GET", "traffic_sources")
         return self._ensure_list(data, "sources")
 
     def get_domains(self) -> list[dict[str, Any]]:
-        """Получить список доступных доменов."""
+        """Get the list of available domains."""
         data = self._request("GET", "domains")
         return self._ensure_list(data, "domains")
 
@@ -246,10 +227,6 @@ class KeitaroAPI:
         type_name: str = "campaigns",
         position: int | None = None,
     ) -> dict[str, Any]:
-        """Создать группу (POST /groups).
-
-        ``type_name`` — тип группы: campaigns, offers, landings или domains.
-        """
         payload: dict[str, Any] = {"name": name, "type": type_name}
         if position is not None:
             payload["position"] = position
@@ -263,27 +240,26 @@ class KeitaroAPI:
         notes: str | None = None,
         catch_not_found: bool = False,
     ) -> dict[str, Any]:
-        """Создать домен (POST /domains). Обязательно только поле ``name``."""
+        """Create a domain (POST /domains). Only the ``name`` field is required."""
         payload: dict[str, Any] = {"name": name, "catch_not_found": catch_not_found}
         if group_id is not None:
-            # В Admin API Keitaro group_id домена передаётся строкой
             payload["group_id"] = str(group_id)
         if notes:
             payload["notes"] = notes
         data = self._request("POST", "domains", json=payload)
         return self._ensure_dict(data, f"домена «{name}»")
 
-    # --- создание кампании и потоков (Создаватор) ---
+    # --- create companies and streams (Creator) ---
 
     def create_campaign(self, payload: dict[str, Any]) -> dict[str, Any]:
-        """Создать новую кампанию (POST /campaigns)."""
+        """Create a new campaign (POST /campaigns)."""
         data = self._request("POST", "campaigns", json=payload)
         if not isinstance(data, dict):
             raise KeitaroAPIError("Неожиданный формат ответа при создании кампании")
         return data
 
     def create_stream(self, campaign_id: int, payload: dict[str, Any]) -> dict[str, Any]:
-            """Создать поток в кампании (POST /streams с campaign_id в теле запроса)."""
+            """Create a stream in a campaign (POST /streams with campaign_id in the body)."""
             body = {**payload, "campaign_id": campaign_id}
             data = self._request("POST", "streams", json=body)
             if not isinstance(data, dict):
@@ -301,7 +277,7 @@ class KeitaroAPI:
         source_id: int | None = None,
         domain_id: int | None = None,
     ) -> dict[str, Any]:
-        """Высокоуровневый метод «создаватора»: кампания + гео-поток (на google) + поток оффера."""
+        """High-level Creator method: campaign + geo stream (to google) + offer stream."""
         campaign_payload: dict[str, Any] = {
             "name": name,
             "alias": name.lower().replace(" ", "-"),
@@ -322,7 +298,6 @@ class KeitaroAPI:
 
         created_streams = []
 
-        # Поток 1: Геофильтр -> google.com
         stream_geo_payload = {
             "name": f"Geo Filter ({geo}) -> Google",
             "type": "regular",
@@ -341,7 +316,6 @@ class KeitaroAPI:
         stream1 = self.create_stream(campaign_id, stream_geo_payload)
         created_streams.append(stream1)
 
-        # Поток 2: Основной поток с выбранным оффером
         stream_offer_payload = {
             "name": f"Offer Stream (ID: {offer_id})",
             "type": "regular",
@@ -366,7 +340,7 @@ class KeitaroAPI:
 
     @staticmethod
     def _ensure_list(data: Any, what: str) -> list[dict[str, Any]]:
-        """Привести ответ Keitaro к списку словарей."""
+        """Coerce a Keitaro response into a list of dicts."""
         if data is None:
             return []
         if isinstance(data, dict):
@@ -381,11 +355,6 @@ class KeitaroAPI:
 
     @staticmethod
     def _ensure_dict(data: Any, what: str) -> dict[str, Any]:
-        """Привести ответ Keitaro к словарю.
-
-        Часть эндпоинтов создания (например ``POST /domains``) отвечает
-        массивом — в этом случае возвращаем первый элемент.
-        """
         if isinstance(data, dict):
             return data
         if isinstance(data, list) and data and isinstance(data[0], dict):
@@ -394,7 +363,7 @@ class KeitaroAPI:
 
 
 def parse_keitaro_datetime(value: Any) -> datetime | None:
-    """Разобрать дату из ответа Keitaro."""
+    """Parse a datetime from a Keitaro response."""
     if value in (None, ""):
         return None
     if isinstance(value, datetime):

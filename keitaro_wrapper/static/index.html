@@ -193,18 +193,15 @@
         </button>
       </div>
 
-      <div class="mt-4 grid gap-6 lg:grid-cols-2">
+      <div class="mt-4 gap-6">
         <!-- Группы -->
         <div class="rounded-lg border border-slate-200 p-4">
           <div class="flex flex-wrap items-end gap-3">
-            <label class="grid gap-1 text-xs font-medium flex-1 min-w-[140px]">
+            <label class="grid gap-1 text-xs font-medium flex-1 w-full">
               Тип групп
               <select id="group-type-select"
                       class="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal">
                 <option value="campaigns">campaigns</option>
-                <option value="offers">offers</option>
-                <option value="landings">landings</option>
-                <option value="domains">domains</option>
               </select>
             </label>
             <span class="pb-2 text-xs text-slate-500">Найдено: <b id="groups-count">0</b></span>
@@ -300,6 +297,7 @@
     const draftOffersBody = document.getElementById('draft-offers-body');
     const totalShareLabel = document.getElementById('total-share-label');
     const dirtyBadge = document.getElementById('dirty-badge');
+    const dirtyStream = document.getElementById('stream-editor-panel')
     const groupSelectEl = document.getElementById('group-select');
     const domainSelectEl = document.getElementById('domain-select');
     const groupTypeSelectEl = document.getElementById('group-type-select');
@@ -390,6 +388,7 @@
     function setDirty(dirty) {
       isDirty = dirty;
       dirtyBadge.classList.toggle('hidden', !dirty);
+      dirtyStream.style.backgroundColor = dirty ? 'rgb(252 252 231)' : '';
     }
 
     function recalculateSharesEvenly(list) {
@@ -530,7 +529,7 @@
       try {
         currentCampaignId = targetId;
         document.getElementById('editor-campaign-id').value = targetId;
-        const streams = await api(`/campaigns/${targetId}/streams`);
+        const streams = await api(`/campaigns/${targetId}/streams?source=keitaro`);
         loadedStreams = Array.isArray(streams) ? streams : (streams?.streams || []);
         renderStreamsButtons();
 
@@ -618,7 +617,7 @@
 
     async function loadGroups(typeName = groupTypeSelectEl.value) {
       try {
-        const groups = (await api(`/api/groups?type=${encodeURIComponent(typeName)}`)) || [];
+        const groups = (await api(`/api/groups?type=campaigns`)) || [];
         document.getElementById('groups-count').textContent = groups.length;
         renderDictionaryPreview(groupsPreviewEl, groups, 'Групп этого типа нет — создайте первую.');
         if (typeName === 'campaigns' && groupSelectEl) fillSelect(groupSelectEl, groups, '— не выбрана —');
@@ -719,7 +718,7 @@
 
     async function loadStreamsRaw(keitaroId) {
       try {
-        const streams = await api(`/campaigns/${keitaroId}/streams`);
+        const streams = await api(`/campaigns/${keitaroId}/streams?source=keitaro`);
         show(streamsResult, { campaign_id: keitaroId, streams });
       } catch (error) {
         show(streamsResult, 'Ошибка загрузки потоков: ' + error.message);
@@ -813,7 +812,7 @@
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        show(createResult, result);
+        show(createResult, result.message);
         await loadCampaigns();
         const createdId = result?.data?.campaign?.id || result?.campaign?.id;
         if (createdId) {
@@ -824,10 +823,6 @@
       } finally {
         setBusy(button, false);
       }
-    });
-
-    groupTypeSelectEl.addEventListener('change', () => {
-      loadGroups(groupTypeSelectEl.value);
     });
 
     document.getElementById('refresh-dictionaries-btn').addEventListener('click', async (event) => {
@@ -856,7 +851,7 @@
           method: 'POST',
           body: JSON.stringify({ name, type }),
         });
-        show(dictionariesResult, result);
+        show(dictionariesResult, result.message);
         nameInput.value = '';
         await loadGroups(type);
       } catch (error) {

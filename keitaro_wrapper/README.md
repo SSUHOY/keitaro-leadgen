@@ -54,12 +54,13 @@ Tailwind Play CDN (`https://cdn.tailwindcss.com`). На странице:
   (тело `{"offers": [{"offer_id": 18813, "share": 100, "state": "active"}]}` —
   «PUSH TO KT» отправляет полный список офферов потока с долями; также
   поддерживается точечный формат `{"offer_id": 18813, "action": "add"|"remove"}`.
-  Существующие офферы потока отдаёт `GET /campaigns/{keitaro_id}/streams`
-  в поле `offers`);
+  Потоки кампании редактор берёт **из самого Keitaro** —
+  `GET /campaigns/{keitaro_id}/streams?source=keitaro` (кеш при этом обновляется);
+  без параметра (`source=local`) эндпоинт отдаёт данные локальной БД);
 * таблица кампаний из локальной БД (`GET /campaigns`, поиск по названию или ID
   через `?search=`, подсказка «Найдено: N») с кнопками
   «Обновить список», «Синхронизировать с Keitaro» (`POST /campaigns/sync`)
-  и «Показать потоки» (`GET /campaigns/{keitaro_id}/streams`);
+  и «Показать потоки» (`GET /campaigns/{keitaro_id}/streams?source=keitaro`);
 * все кнопки страницы блокируются (`disabled`) на время активных запросов к API,
   чтобы исключить повторные клики; поиск в таблице кампаний отправляется
   с задержкой 300 мс (debounce) и по нажатию Enter.
@@ -94,7 +95,7 @@ def read_root() -> FileResponse:
 | POST  | `/campaigns/{keitaro_id}/streams/{stream_id}/offers` | офферы потока: полный набор `{"offers": [...]}` или точечно `{"offer_id", "action"}` |
 | GET   | `/campaigns`                  | кампании из БД (`search`, `state`, `limit`, `offset`) |
 | GET   | `/campaigns/{keitaro_id}`     | одна кампания                                        |
-| GET   | `/campaigns/{keitaro_id}/streams` | потоки кампании                                 |
+| GET   | `/campaigns/{keitaro_id}/streams` | потоки кампании (`?source=local\|keitaro` — кеш или живой Keitaro, редактор использует `keitaro`) |
 
 ## Настройки (.env)
 
