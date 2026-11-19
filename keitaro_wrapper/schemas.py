@@ -1,4 +1,4 @@
-"""Pydantic-схемы запросов и ответов API."""
+"""Pydantic schemas for API requests and responses."""
 
 from __future__ import annotations
 
@@ -9,22 +9,22 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 
 
 class ORMModel(BaseModel):
-    """Базовая схема для ответов, собираемых из ORM-объектов."""
+    """Base schema for responses built from ORM objects."""
 
     model_config = ConfigDict(from_attributes=True)
 
 
 class HealthOut(BaseModel):
-    status: str = Field(description="Состояние сервиса", examples=["ok"])
-    database: str = Field(description="Состояние БД", examples=["ok"])
+    status: str = Field(description="Service status", examples=["ok"])
+    database: str = Field(description="Database status", examples=["ok"])
     keitaro_configured: bool = Field(
-        description="Заданы ли KEITARO_BASE_URL и KEITARO_API_KEY в .env"
+        description="Whether KEITARO_BASE_URL and KEITARO_API_KEY are set in .env"
     )
 
 
 class KeitaroPingOut(BaseModel):
     status: str = Field(examples=["ok"])
-    base_url: str = Field(description="Базовый URL трекера, к которому было обращение")
+    base_url: str = Field(description="Base URL of the tracker that was called")
 
 
 class CampaignOut(ORMModel):
@@ -41,21 +41,21 @@ class CampaignOut(ORMModel):
 
 
 class StreamOfferItem(BaseModel):
-    """Оффер внутри потока кампании."""
+    """An offer inside a campaign stream."""
 
-    offer_id: int = Field(description="ID оффера в Keitaro")
-    share: int = Field(default=100, description="Доля трафика, %")
-    state: str = Field(default="active", description="Состояние оффера: active или disabled")
+    offer_id: int = Field(description="Keitaro offer ID")
+    share: int = Field(default=100, description="Traffic share, %")
+    state: str = Field(default="active", description="Offer state: active or disabled")
 
 
 class StreamOffersUpdate(BaseModel):
-    """Полный набор офферов потока — «PUSH TO KT» из редактора.
+    """The full set of stream offers — "PUSH TO KT" from the editor.
 
-    Keitaro принимает список офферов целиком, поэтому фронтенд присылает
-    итоговый список (с долями и без удалённых офферов).
+    Keitaro accepts the offer list as a whole, so the frontend sends the
+    final list (with shares and without the removed offers).
     """
 
-    offers: list[StreamOfferItem] = Field(description="Итоговый список офферов потока")
+    offers: list[StreamOfferItem] = Field(description="Final list of stream offers")
 
 
 class StreamOut(ORMModel):
@@ -71,17 +71,17 @@ class StreamOut(ORMModel):
     synced_at: datetime
     offers: list[StreamOfferItem] = Field(
         default_factory=list,
-        description="Офферы потока, сохранённые в локальном кеше",
+        description="Stream offers stored in the local cache",
     )
     raw: dict[str, Any] | None = Field(
         default=None,
         exclude=True,
-        description="Исходный ответ Keitaro — используется только для разбора офферов",
+        description="Raw Keitaro response — used only to parse offers",
     )
 
     @model_validator(mode="after")
     def _fill_offers_from_raw(self) -> "StreamOut":
-        """Достать офферы из сохранённого ответа Keitaro, если они не переданы явно."""
+        """Pull offers from the stored Keitaro response if none were passed explicitly."""
         if self.offers or not isinstance(self.raw, dict):
             return self
 
@@ -104,7 +104,7 @@ class StreamOut(ORMModel):
 
 
 class SyncResult(BaseModel):
-    """Итоги синхронизации с Keitaro."""
+    """Keitaro synchronization summary."""
 
     campaigns_total: int = 0
     campaigns_created: int = 0
@@ -114,37 +114,37 @@ class SyncResult(BaseModel):
     streams_updated: int = 0
 
 class CampaignCreateRequest(BaseModel):
-    """Данные для создания кампании через 'создаватор'."""
-    name: str = Field(description="Название кампании")
-    geo: str = Field(description="Гео-код страны, например AU, MX, RU")
-    offer_id: int = Field(description="ID оффера в Keitaro")
-    group_id: int | None = Field(default=None, description="ID группы кампаний")
-    source_id: int | None = Field(default=None, description="ID источника трафика")
-    domain_id: int | None = Field(default=None, description="ID домена")
+    """Data for creating a campaign through the 'creator'."""
+    name: str = Field(description="Campaign name")
+    geo: str = Field(description="Country geo code, e.g. AU, MX, RU")
+    offer_id: int = Field(description="Keitaro offer ID")
+    group_id: int | None = Field(default=None, description="Campaign group ID")
+    source_id: int | None = Field(default=None, description="Traffic source ID")
+    domain_id: int | None = Field(default=None, description="Domain ID")
 
 class GroupCreateRequest(BaseModel):
-    """Данные для создания группы Keitaro."""
+    """Data for creating a Keitaro group."""
 
-    name: str = Field(description="Название группы")
+    name: str = Field(description="Group name")
     type: str = Field(
         default="campaigns",
-        description="Тип группы: campaigns, offers, landings или domains",
+        description="Group type: campaigns, offers, landings or domains",
     )
-    position: int | None = Field(default=None, description="Позиция группы в списке")
+    position: int | None = Field(default=None, description="Group position in the list")
 
 
 class DomainCreateRequest(BaseModel):
-    """Данные для создания домена Keitaro."""
+    """Data for creating a Keitaro domain."""
 
-    name: str = Field(description="Имя домена, например track.example.com")
-    group_id: int | None = Field(default=None, description="ID группы доменов")
-    notes: str | None = Field(default=None, description="Заметки к домену")
+    name: str = Field(description="Domain name, e.g. track.example.com")
+    group_id: int | None = Field(default=None, description="Domain group ID")
+    notes: str | None = Field(default=None, description="Notes for the domain")
     catch_not_found: bool = Field(
-        default=False, description="Ловить трафик несуществующих URL"
+        default=False, description="Catch traffic of non-existent URLs"
     )
 
 
 class OfferUpdateAction(BaseModel):
-    offer_id: int = Field(description="ID оффера в Keitaro")
-    action: str = Field(description="Действие: 'add' или 'remove'")
-    share: int = Field(default=100, description="Доля трафика для оффера (по умолчанию 100)")
+    offer_id: int = Field(description="Keitaro offer ID")
+    action: str = Field(description="Action: 'add' or 'remove'")
+    share: int = Field(default=100, description="Traffic share for the offer (defaults to 100)")
