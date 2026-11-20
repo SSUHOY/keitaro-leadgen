@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import logging
 import time
-from collections.abc import Iterator
+from collections.abc import AsyncIterator
 from contextlib import asynccontextmanager, contextmanager
 from pathlib import Path
 from typing import Any
@@ -29,7 +29,6 @@ from schemas import (
 )
 from services.keitaro_api import KeitaroAPI, KeitaroAPIError, parse_keitaro_datetime
 
-# Static directory (index.html); the path does not depend on the current CWD
 STATIC_DIR = Path(__file__).resolve().parent / "static"
 
 logging.basicConfig(
@@ -67,7 +66,7 @@ class StepTimer:
 
 
 @asynccontextmanager
-async def lifespan(_: FastAPI) -> Iterator[None]:
+async def lifespan(_: FastAPI) -> AsyncIterator[None]:
     init_db()
     logger.info("Таблицы БД готовы, сервис запущен")
     yield
@@ -594,7 +593,7 @@ def create_campaign_wrapper(
 
         return {
             "status": "success",
-            "message": "Кампания создана в Keitaro, можно редактировать потоки в правом окне",
+            "message": "Кампания создана, можно редактировать потоки в правом окне",
             "data": result,
             "campaign_id": created_id,
             "local_campaign": (
