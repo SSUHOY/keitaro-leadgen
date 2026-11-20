@@ -1,112 +1,126 @@
 # keitaro_wrapper
 
-Мини-сервис (FastAPI) — обёртка над Admin API трекера Keitaro: забирает кампании
-и их потоки (streams) в локальную БД (SQLAlchemy + SQLite по умолчанию)
-и отдаёт их через REST API.
+Тестовое задание: сервис на **FastAPI** поверх Admin API трекера **Keitaro**.
 
-## Структура
+* **Создаватель кампаний** — создаёт кампанию по шаблону: geo-поток (редирект на Google) + поток с оффером.
+* **Редактор офферов** — добавляет/удаляет офферы в потоках существующих кампаний, меняет доли.
+* Локальный кеш — **SQLite** (SQLAlchemy 2.0), интерфейс — одна HTML-страница (`static/index.html`, Tailwind Play CDN, сборка не нужна).
 
-```
-keitaro_wrapper/
-├── services/
-│   ├── __init__.py
-│   └── keitaro_api.py      # клиент Admin API Keitaro (requests, заголовок Api-Key)
-├── static/
-│   └── index.html          # веб-интерфейс на Tailwind (создаватель + редактор)
-├── __init__.py
-├── .env                    # настройки подключения (URL, API-ключ, БД)
-├── database.py             # engine, SessionLocal, Base, get_db(), init_db()
-├── models.py               # ORM-модели Campaign и Stream
-├── schemas.py              # Pydantic-схемы ответов
-├── main.py                 # FastAPI-приложение и эндпоинты
-├── requirements.txt
-└── README.md
-```
+---
 
-## Установка и запуск
+## Требования
+
+* Python 3.10+ (проверено на 3.11+)
+* Доступный инстанс Keitaro и API-ключ к нему
+
+---
+
+## Запуск
+
+### Windows (PowerShell)
 
 ```powershell
-cd keitaro_wrapper
+git clone https://github.com/SSUHOY/keitaro-leadgen.git
+cd keitaro-leadgen\keitaro_wrapper
+
 python -m venv .venv
 .venv\Scripts\Activate.ps1
+
 pip install -r requirements.txt
-# заполнить .env: KEITARO_BASE_URL и KEITARO_API_KEY
+
+Copy-Item .env.example .env
+
 uvicorn main:app --reload
 ```
 
-Swagger UI: http://127.0.0.1:8000/docs
-Веб-интерфейс: http://127.0.0.1:8000/ (отдаётся `static/index.html`)
+### Linux / macOS
 
-## Веб-интерфейс (Tailwind)
+```bash
+git clone https://github.com/SSUHOY/keitaro-leadgen.git
+cd keitaro-leadgen/keitaro_wrapper
 
-`static/index.html` — одна страница без сборки, стили подключены через
-Tailwind Play CDN (`https://cdn.tailwindcss.com`). На странице:
+python3 -m venv .venv
+source .venv/bin/activate
 
-* бейдж состояния (`GET /health`) и ссылка на Swagger;
-* форма «Создаватель» — `POST /campaigns/create-wrapper`
-  (название, гео, оффер + подсказки из `GET /api/offers`; группы и домены
-  выбираются из селекторов, которые заполняются `GET /api/groups?type=campaigns`
-  и `GET /api/domains`),
-* блок «Справочники» — списки групп (с выбором типа: campaigns/offers/landings/domains)
-  и доменов из `GET /api/groups` и `GET /api/domains`, создание новых
-  (`POST /api/groups`, `POST /api/domains`);
-* форма «Редактор» — `POST /campaigns/{keitaro_id}/streams/{stream_id}/offers`
-  (тело `{"offers": [{"offer_id": 18813, "share": 100, "state": "active"}]}` —
-  «PUSH TO KT» отправляет полный список офферов потока с долями; также
-  поддерживается точечный формат `{"offer_id": 18813, "action": "add"|"remove"}`.
-  Потоки кампании редактор берёт **из самого Keitaro** —
-  `GET /campaigns/{keitaro_id}/streams?source=keitaro` (кеш при этом обновляется);
-  без параметра (`source=local`) эндпоинт отдаёт данные локальной БД);
-* таблица кампаний из локальной БД (`GET /campaigns`, поиск по названию или ID
-  через `?search=`, подсказка «Найдено: N») с кнопками
-  «Обновить список», «Синхронизировать с Keitaro» (`POST /campaigns/sync`)
-  и «Показать потоки» (`GET /campaigns/{keitaro_id}/streams?source=keitaro`);
-* все кнопки страницы блокируются (`disabled`) на время активных запросов к API,
-  чтобы исключить повторные клики; поиск в таблице кампаний отправляется
-  с задержкой 300 мс (debounce) и по нажатию Enter.
+pip install -r requirements.txt
 
-Как подключено в `main.py`:
+cp .env.example .env
 
-```python
-STATIC_DIR = Path(__file__).resolve().parent / "static"
-
-app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
-
-@app.get("/", include_in_schema=False)
-def read_root() -> FileResponse:
-    return FileResponse(STATIC_DIR / "index.html")
+uvicorn main:app --reload
 ```
 
-## Эндпоинты
+> Запускать `uvicorn` нужно **из каталога `keitaro_wrapper`**: импорты в проекте плоские
+> (`from database import ...`), а `DATABASE_URL=sqlite:///./keitaro.db` создаёт файл БД относительно текущего каталога.
 
-| Метод | Путь                          | Назначение                                          |
-|-------|-------------------------------|-----------------------------------------------------|
-| GET   | `/`                           | веб-интерфейс (`static/index.html`)                  |
-| GET   | `/static/{file}`              | статика (css/js/изображения, если появятся)          |
-| GET   | `/health`                     | живость сервиса, БД и наличие настроек Keitaro       |
-| GET   | `/keitaro/ping`               | проверка доступности Keitaro и API-ключа             |
-| GET   | `/api/offers`                 | список офферов для выбора                            |
-| GET   | `/api/groups`                 | список групп Keitaro (`?type=campaigns\|offers\|landings\|domains`) |
-| POST  | `/api/groups`                 | создать группу Keitaro (`name`, `type`, `position`)  |
-| GET   | `/api/domains`                | список доменов Keitaro                               |
-| POST  | `/api/domains`                | создать домен Keitaro (`name`, `group_id`, `notes`)  |
-| POST  | `/campaigns/sync`             | синхронизация кампаний и потоков из Keitaro в БД     |
-| POST  | `/campaigns/create-wrapper`   | создание кампании с двумя потоками (создаватель)     |
-| POST  | `/campaigns/{keitaro_id}/streams/{stream_id}/offers` | офферы потока: полный набор `{"offers": [...]}` или точечно `{"offer_id", "action"}` |
-| GET   | `/campaigns`                  | кампании из БД (`search`, `state`, `limit`, `offset`) |
-| GET   | `/campaigns/{keitaro_id}`     | одна кампания                                        |
-| GET   | `/campaigns/{keitaro_id}/streams` | потоки кампании (`?source=local\|keitaro` — кеш или живой Keitaro, редактор использует `keitaro`) |
+После старта:
 
-## Настройки (.env)
+* `http://127.0.0.1:8000/` — веб-интерфейс
+* `http://127.0.0.1:8000/docs` — Swagger UI
+* `http://127.0.0.1:8000/health` — живость сервиса и настройки Keitaro
 
-| Переменная          | Описание                                            |
-|---------------------|-----------------------------------------------------|
-| `KEITARO_BASE_URL`  | URL трекера без `/admin_api/v1`                     |
-| `KEITARO_API_KEY`   | API-ключ из настроек Keitaro                        |
-| `KEITARO_TIMEOUT`   | таймаут запросов, секунды (по умолчанию 30)         |
-| `DATABASE_URL`      | строка подключения SQLAlchemy, по умолчанию SQLite  |
+---
 
-## Обработка ошибок
+## Настройки (`.env`)
 
-Любая ошибка обращения к Keitaro (`KeitaroAPIError`) возвращается клиенту
-с кодом `502 Bad Gateway` и текстом причины в поле `detail`.
+Скопируйте `keitaro_wrapper/.env.example` в `keitaro_wrapper/.env` и заполните:
+
+| Переменная | Обязательна | Описание |
+|---|---|---|
+| `KEITARO_BASE_URL` | да | URL трекера **без** `/admin_api/v1`, например `https://tracker.example.com` |
+| `KEITARO_API_KEY` | да | API-ключ из админки Keitaro (Администрирование → API) |
+| `KEITARO_TIMEOUT` | нет | Таймаут HTTP-запросов к Keitaro, секунды (по умолчанию `30`) |
+| `DATABASE_URL` | нет | Строка подключения SQLAlchemy (по умолчанию `sqlite:///./keitaro.db`) |
+
+`.env` добавлен в `.gitignore` и в репозиторий не попадает.
+
+---
+
+## База данных и миграции
+
+Alembic в проекте **не используется** — для двух таблиц (`campaigns`, `streams`) схема создаётся автоматически
+при старте приложения: lifespan вызывает `init_db()` → `Base.metadata.create_all(bind=engine)`.
+
+* **Первый запуск** — таблицы и файл `keitaro_wrapper/keitaro.db` создаются сами, дополнительных команд не нужно.
+* **Сброс схемы и кеша** — остановить сервис, удалить БД, запустить снова:
+  `Remove-Item keitaro.db` (PowerShell) или `rm keitaro.db` (bash).
+* **Другая СУБД** — задать `DATABASE_URL`, например
+  `postgresql+psycopg2://user:pass@localhost:5432/keitaro` (+ `pip install psycopg2-binary`); таблицы создаст тот же `create_all()`.
+* **Изменение моделей** — `create_all()` не перестраивает существующие таблицы: пересоздайте БД либо подключите Alembic (`alembic init` + правка `env.py`).
+
+Кеш наполняется по требованию: при создании кампании (`POST /campaigns/create-wrapper`) и при чтении потоков живьём
+(`GET /campaigns/{keitaro_id}/streams?source=keitaro`).
+
+---
+
+## Основные эндпоинты
+
+Полный список — в Swagger UI (`/docs`).
+
+| Метод | Путь | Назначение |
+|---|---|---|
+| GET | `/` | веб-интерфейс (`static/index.html`) |
+| GET | `/health` | живость сервиса, доступность БД, заданы ли настройки Keitaro |
+| GET | `/keitaro/ping` | проверка доступности Keitaro и API-ключа |
+| GET | `/api/offers` | список офферов (заполняет datalist в UI) |
+| GET | `/api/groups?type=campaigns` | группы Keitaro (`campaigns\|offers\|landings\|domains`) |
+| GET | `/api/domains` | домены Keitaro |
+| GET | `/api/sources` | источники трафика Keitaro |
+| POST | `/campaigns/create-wrapper` | **создаватель**: кампания + geo-поток на Google + поток с оффером |
+| GET | `/campaigns/{keitaro_id}/streams` | потоки кампании: `?source=local` (кеш) или `?source=keitaro` (живые данные) |
+| POST | `/campaigns/{keitaro_id}/streams/{stream_id}/offers` | **редактор**: полный набор офферов `{"offers": [...]}` или точечно `{"offer_id", "action"}` |
+
+Примеры запросов:
+
+```bash
+# Создание кампании
+curl -X POST http://127.0.0.1:8000/campaigns/create-wrapper \
+  -H "Content-Type: application/json" \
+  -d '{"name": "My Campaign", "geo": "AU", "offer_id": 18813,
+       "group_id": 9799, "domain_id": 1813, "source_id": 836}'
+
+# Публикация офферов в потоке ("PUSH TO KT")
+curl -X POST http://127.0.0.1:8000/campaigns/216386/streams/1330428/offers \
+  -H "Content-Type: application/json" \
+  -d '{"offers": [{"offer_id": 18813, "share": 70, "state": "active"},
+                  {"offer_id": 12992, "share": 30, "state": "active"}]}'
+```
