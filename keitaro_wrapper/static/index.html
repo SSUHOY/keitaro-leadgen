@@ -7,6 +7,16 @@
   <script src="https://cdn.tailwindcss.com"></script>
 </head>
 <body class="min-h-screen bg-slate-100 text-slate-800">
+  <div id="global-loader"
+       class="hidden fixed inset-0 z-50 flex items-center justify-center bg-slate-900/40 backdrop-blur-sm"
+       role="status" aria-live="polite">
+    <div class="flex items-center gap-3 rounded-lg bg-white px-5 py-3 shadow-xl">
+      <span aria-hidden="true"
+            class="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600"></span>
+      <span class="text-sm font-medium text-slate-700">Загрузка данных из Keitaro…</span>
+      <span id="global-loader-detail" class="text-xs text-slate-500"></span>
+    </div>
+  </div>
 
   <header class="bg-slate-900 text-white shadow">
     <div class="mx-auto flex max-w-6xl flex-wrap items-center justify-between gap-4 px-4 py-6">
@@ -178,13 +188,12 @@
            class="mt-4 hidden max-h-60 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100"></pre>
     </section>
 
-    <!-- Справочники Keitaro: группы и домены -->
     <section class="rounded-lg bg-white p-6 shadow lg:col-span-12">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 class="text-lg font-semibold">Справочники Keitaro: группы и домены</h2>
+          <h2 class="text-lg font-semibold">Справочники Keitaro: группы</h2>
           <p class="mt-0.5 text-sm text-slate-500">
-            Списки тянутся из Admin API и подставляются в селекторы «Создавателя кампании». Новые группы и домены можно создавать здесь же.
+            Список групп кампаний тянется из Admin API и подставляется в селекторы «Создавателя кампании». Новую группу можно создать здесь же.
           </p>
         </div>
         <button id="refresh-dictionaries-btn"
@@ -196,15 +205,9 @@
       <div class="mt-4 gap-6">
         <!-- Группы -->
         <div class="rounded-lg border border-slate-200 p-4">
-          <div class="flex flex-wrap items-end gap-3">
-            <label class="grid gap-1 text-xs font-medium flex-1 w-full">
-              Тип групп
-              <select id="group-type-select"
-                      class="w-full rounded border border-slate-300 bg-white px-2 py-1.5 text-sm font-normal">
-                <option value="campaigns">campaigns</option>
-              </select>
-            </label>
-            <span class="pb-2 text-xs text-slate-500">Найдено: <b id="groups-count">0</b></span>
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-xs font-semibold uppercase tracking-wide text-slate-400">Группы кампаний</span>
+            <span class="text-xs text-slate-500">Найдено: <b id="groups-count">0</b></span>
           </div>
 
           <div class="mt-3 flex flex-wrap items-end gap-2 border-t border-slate-100 pt-3">
@@ -300,7 +303,6 @@
     const dirtyStream = document.getElementById('stream-editor-panel')
     const groupSelectEl = document.getElementById('group-select');
     const domainSelectEl = document.getElementById('domain-select');
-    const groupTypeSelectEl = document.getElementById('group-type-select');
     const domainGroupSelectEl = document.getElementById('domain-group-select');
     const groupsPreviewEl = document.getElementById('groups-preview');
     const domainsPreviewEl = document.getElementById('domains-preview');
@@ -318,14 +320,16 @@
     let isDirty = false;
     let pendingRequests = 0;
     let searchDebounceTimer = null;
-    // Кнопки, которые заблокировал глобальный «занято»-режим (чтобы вернуть их после запроса)
+    
+    const GROUPS_SELECT_TYPE = 'campaigns';
+    const globalLoaderEl = document.getElementById('global-loader');
+    const globalLoaderDetailEl = document.getElementById('global-loader-detail');
+    let loaderShowTimer = null;
+
     const lockedButtons = new Set();
 
-    /**
-     * Пока есть незавершённые запросы — все кнопки на странице disabled,
-     * чтобы исключить повторные клики и лишние обращения к API.
-     */
     function applyGlobalBusyState() {
+      updateGlobalLoader();
       if (pendingRequests > 0) {
         document.querySelectorAll('button').forEach((button) => {
           if (button.disabled) return; // кнопка уже занята своим setBusy — не трогаем
@@ -341,6 +345,28 @@
         button.classList.remove('opacity-60', 'cursor-not-allowed');
       });
       lockedButtons.clear();
+    }
+
+    function updateGlobalLoader() {
+      if (!globalLoaderEl) return;
+
+      if (pendingRequests > 0) {
+        if (globalLoaderDetailEl) {
+          globalLoaderDetailEl.textContent = `осталось запросов: ${pendingRequests}`;
+        }
+        if (loaderShowTimer) return;
+        loaderShowTimer = setTimeout(() => {
+          loaderShowTimer = null;
+          if (pendingRequests > 0) globalLoaderEl.classList.remove('hidden');
+        }, 200);
+        return;
+      }
+
+      if (loaderShowTimer) {
+        clearTimeout(loaderShowTimer);
+        loaderShowTimer = null;
+      }
+      globalLoaderEl.classList.add('hidden');
     }
 
     async function api(path, options = {}) {
@@ -615,18 +641,24 @@
       element.appendChild(list);
     }
 
-    async function loadGroups(typeName = groupTypeSelectEl.value) {
+    async function loadGroups() {
       try {
-        const groups = (await api(`/api/groups?type=campaigns`)) || [];
-        document.getElementById('groups-count').textContent = groups.length;
-        renderDictionaryPreview(groupsPreviewEl, groups, 'Групп этого типа нет — создайте первую.');
-        if (typeName === 'campaigns' && groupSelectEl) fillSelect(groupSelectEl, groups, '— не выбрана —');
-        if (typeName === 'domains' && domainGroupSelectEl) fillSelect(domainGroupSelectEl, groups, '— не выбрана —');
+        const groups = (await api(`/api/groups?type=${encodeURIComponent(GROUPS_SELECT_TYPE)}`)) || [];
+        const groupsCountEl = document.getElementById('groups-count');
+        if (groupsCountEl) groupsCountEl.textContent = groups.length;
+        renderDictionaryPreview(groupsPreviewEl, groups, 'Групп нет — создайте первую.');
+        fillGroupSelects(groups);
         return groups;
       } catch (error) {
         renderDictionaryPreview(groupsPreviewEl, [], 'Не удалось загрузить группы: ' + error.message);
         return [];
       }
+    }
+
+    /** Один ответ /api/groups подставляется во все селекты групп. */
+    function fillGroupSelects(items) {
+      if (groupSelectEl) fillSelect(groupSelectEl, items, '— не выбрана —');
+      if (domainGroupSelectEl) fillSelect(domainGroupSelectEl, items, '— не выбрана —');
     }
 
     async function loadDomains() {
@@ -648,11 +680,7 @@
     }
 
     async function refreshDictionaries() {
-      const typesToLoad = ['campaigns', 'domains'];
-      if (!typesToLoad.includes(groupTypeSelectEl.value)) {
-        typesToLoad.push(groupTypeSelectEl.value);
-      }
-      await Promise.all([...typesToLoad.map((type) => loadGroups(type)), loadDomains()]);
+      await Promise.all([loadGroups(), loadDomains()]);
     }
 
     function renderCampaigns(campaigns, searchTerm = '') {
@@ -839,7 +867,7 @@
       const button = event.currentTarget;
       const nameInput = document.getElementById('new-group-name');
       const name = nameInput.value.trim();
-      const type = groupTypeSelectEl.value;
+      const type = GROUPS_SELECT_TYPE;
       if (!name) {
         show(dictionariesResult, 'Укажите название группы');
         return;
@@ -853,7 +881,7 @@
         });
         show(dictionariesResult, result.message);
         nameInput.value = '';
-        await loadGroups(type);
+        await refreshDictionaries();
       } catch (error) {
         show(dictionariesResult, 'Ошибка создания группы: ' + error.message);
       } finally {
