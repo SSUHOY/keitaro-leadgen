@@ -13,7 +13,7 @@
     <div class="flex items-center gap-3 rounded-lg bg-white px-5 py-3 shadow-xl">
       <span aria-hidden="true"
             class="h-5 w-5 animate-spin rounded-full border-2 border-slate-300 border-t-indigo-600"></span>
-      <span class="text-sm font-medium text-slate-700">Загрузка данных из Keitaro…</span>
+      <span class="text-sm font-medium text-slate-700">Пожалуйста, подождите...</span>
       <span id="global-loader-detail" class="text-xs text-slate-500"></span>
     </div>
   </div>
@@ -37,7 +37,6 @@
 
   <main class="mx-auto grid max-w-6xl gap-6 px-4 py-8 lg:grid-cols-12">
 
-    <!-- Создаватель кампании -->
     <section class="rounded-lg bg-white p-6 shadow flex flex-col justify-between lg:col-span-5">
       <div>
         <h2 class="text-lg font-semibold">Создаватель кампании</h2>
@@ -65,7 +64,7 @@
             </label>
           </div>
 
-          <div class="grid gap-3 sm:grid-cols-2">
+          <div class="grid gap-3 sm:grid-cols-3">
             <label class="grid gap-1 text-sm font-medium">
               Группа
               <select name="group_id" id="group-select" class="w-full rounded border border-slate-300 px-2 py-2 text-sm font-normal bg-white">
@@ -75,6 +74,12 @@
             <label class="grid gap-1 text-sm font-medium">
               Домен
               <select name="domain_id" id="domain-select" class="w-full rounded border border-slate-300 px-2 py-2 text-sm font-normal bg-white">
+                <option value="">— не выбран —</option>
+              </select>
+            </label>
+            <label class="grid gap-1 text-sm font-medium">
+              Источник трафика
+              <select name="source_id" id="source-select" class="w-full rounded border border-slate-300 px-2 py-2 text-sm font-normal bg-white">
                 <option value="">— не выбран —</option>
               </select>
             </label>
@@ -91,26 +96,21 @@
            class="mt-4 hidden max-h-60 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100"></pre>
     </section>
 
-    <!-- Редактор потоков и офферов кампании -->
     <section class="rounded-lg bg-white p-6 shadow flex flex-col justify-between lg:col-span-7">
       <div>
         <div class="flex flex-wrap items-center justify-between gap-2">
           <div>
             <h2 class="text-lg font-semibold">Редактор потоков и офферов</h2>
-            <p class="mt-0.5 text-sm text-slate-500">
-              Запросите потоки кампании, правьте офферы с пересчётом долей и жмите <b>PUSH TO KT</b>.
-            </p>
           </div>
           <span id="dirty-badge" class="hidden rounded-full bg-amber-100 px-2.5 py-1 text-xs font-medium text-amber-800">
             есть несохранённые правки
           </span>
         </div>
 
-        <!-- Выбор кампании и загрузка потоков из KT -->
         <div class="mt-4 flex flex-wrap items-end gap-3 rounded-lg bg-slate-50 p-3 border border-slate-200">
           <label class="grid gap-1 text-xs font-medium flex-1 min-w-[160px]">
             Кампания (ID в Keitaro)
-            <input id="editor-campaign-id" type="number" min="1" placeholder="Например, 12"
+            <input id="editor-campaign-id" type="number" min="1" placeholder="Например, 123456"
                    class="w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-normal focus:border-indigo-400 focus:outline-none">
           </label>
           <button id="fetch-streams-btn" type="button"
@@ -119,22 +119,22 @@
           </button>
         </div>
 
-        <!-- Список потоков кампании -->
         <div class="mt-4">
-          <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">Потоки кампании</div>
+          <div class="text-xs font-semibold uppercase tracking-wide text-slate-400">
+            Потоки кампании<span id="streams-campaign-name" class="ml-2 font-semibold normal-case tracking-normal text-slate-600"></span>
+          </div>
           <div id="streams-list" class="mt-2 flex flex-wrap gap-2">
-            <span class="text-xs text-slate-400">Сначала запросите потоки кампании</span>
+            <span class="text-xs text-slate-400">Сначала запросите потоки кампании, либо создайте компанию и сразу редактируйте</span>
           </div>
         </div>
 
-        <!-- Панель редактирования офферов выбранного потока -->
         <div id="stream-editor-panel" class="mt-5 hidden rounded-lg border border-slate-200 bg-slate-50/60 p-4">
           <div class="flex flex-wrap items-center justify-between gap-2 border-b border-slate-200 pb-3">
             <div>
               <div id="active-stream-title" class="text-sm font-semibold text-slate-900">Поток</div>
               <div id="active-stream-meta" class="text-xs text-slate-500"></div>
             </div>
-            <div class="flex items-center gap-2">
+            <div id="stream-editor-actions" class="flex items-center gap-2">
               <button id="auto-balance-btn" type="button"
                       class="rounded border border-slate-300 bg-white px-2.5 py-1 text-xs font-medium text-slate-700 hover:bg-slate-100">
                 Пересчитать 100%
@@ -150,36 +150,42 @@
             </div>
           </div>
 
-          <!-- Строка добавления нового оффера -->
-          <div class="mt-3 flex flex-wrap items-end gap-2">
-            <label class="grid gap-1 text-xs font-medium flex-1 min-w-[180px]">
-              Добавить оффер (поиск по ID или названию)
-              <input id="add-offer-input" type="number" min="1" list="offers-list" placeholder="Введите ID оффера"
-                     class="w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-normal focus:border-emerald-500 focus:outline-none">
-            </label>
-            <button id="add-offer-btn" type="button"
-                    class="rounded bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-500">
-              + Добавить оффер
-            </button>
+          <div id="offerless-note"
+               class="mt-3 hidden rounded border border-amber-200 bg-amber-50 px-3 py-2 text-xs text-amber-800">
+            В этот поток («Geo Filter … -> Google») офферы не добавляются — он перенаправляет трафик.
+            Выберите поток с офферами, чтобы править их доли.
           </div>
 
-          <!-- Таблица офферов с пересчётом долей -->
-          <div class="mt-4 overflow-x-auto rounded border border-slate-200 bg-white">
-            <table class="w-full border-collapse text-sm">
-              <thead>
-                <tr class="bg-slate-100/80 text-left text-xs text-slate-500">
-                  <th class="border-b border-slate-200 p-2">Оффер</th>
-                  <th class="border-b border-slate-200 p-2 w-28">Share, %</th>
-                  <th class="border-b border-slate-200 p-2 w-24">Actions</th>
-                </tr>
-              </thead>
-              <tbody id="draft-offers-body"></tbody>
-            </table>
-          </div>
+          <div id="offer-editor-body">
+            <div id="add-offer-row" class="mt-3 flex flex-wrap items-end gap-2">
+              <label class="grid gap-1 text-xs font-medium flex-1 min-w-[180px]">
+                Добавить оффер (поиск по ID или названию)
+                <input id="add-offer-input" type="number" min="1" list="offers-list" placeholder="Введите ID оффера"
+                       class="w-full rounded border border-slate-300 bg-white px-3 py-1.5 text-sm font-normal focus:border-emerald-500 focus:outline-none">
+              </label>
+              <button id="add-offer-btn" type="button"
+                      class="rounded bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-500">
+                + Добавить оффер
+              </button>
+            </div>
 
-          <div class="mt-2 flex items-center justify-between text-xs text-slate-500">
-            <span>Сумма долей: <b id="total-share-label">0%</b></span>
-            <span>Изменения попадут в Keitaro только после нажатия <b>PUSH TO KT</b></span>
+            <div class="mt-4 overflow-x-auto rounded border border-slate-200 bg-white">
+              <table class="w-full border-collapse text-sm">
+                <thead>
+                  <tr class="bg-slate-100/80 text-left text-xs text-slate-500">
+                    <th class="border-b border-slate-200 p-2">Оффер</th>
+                    <th class="border-b border-slate-200 p-2 w-28">Share, %</th>
+                    <th class="border-b border-slate-200 p-2 w-24">Actions</th>
+                  </tr>
+                </thead>
+                <tbody id="draft-offers-body"></tbody>
+              </table>
+            </div>
+
+            <div class="mt-2 flex items-center justify-between text-xs text-slate-500">
+              <span>Сумма долей: <b id="total-share-label">0%</b></span>
+              <span>Изменения попадут в Keitaro только после нажатия <b>PUSH TO KT</b></span>
+            </div>
           </div>
         </div>
       </div>
@@ -191,9 +197,10 @@
     <section class="rounded-lg bg-white p-6 shadow lg:col-span-12">
       <div class="flex flex-wrap items-center justify-between gap-3">
         <div>
-          <h2 class="text-lg font-semibold">Справочники Keitaro: группы</h2>
+          <h2 class="text-lg font-semibold">Справочники и кампании</h2>
           <p class="mt-0.5 text-sm text-slate-500">
-            Список групп кампаний тянется из Admin API и подставляется в селекторы «Создавателя кампании». Новую группу можно создать здесь же.
+            Слева — группы кампаний из Admin API (подставляются в селекторы «Создавателя кампании», новую группу можно создать здесь же).
+            Справа — кампании из локального кеша с поиском по названию или ID.
           </p>
         </div>
         <button id="refresh-dictionaries-btn"
@@ -202,9 +209,9 @@
         </button>
       </div>
 
-      <div class="mt-4 gap-6">
-        <!-- Группы -->
-        <div class="rounded-lg border border-slate-200 p-4">
+      <div class="mt-4 grid gap-6 lg:grid-cols-12">
+
+        <div class="rounded-lg border border-slate-200 p-4 lg:col-span-3">
           <div class="flex flex-wrap items-center justify-between gap-3">
             <span class="text-xs font-semibold uppercase tracking-wide text-slate-400">Группы кампаний</span>
             <span class="text-xs text-slate-500">Найдено: <b id="groups-count">0</b></span>
@@ -217,75 +224,73 @@
                      class="w-full rounded border border-slate-300 px-3 py-1.5 text-sm font-normal focus:border-indigo-400 focus:outline-none">
             </label>
             <button id="create-group-btn" type="button"
-                    class="rounded bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-500">
+                    class="rounded bg-indigo-600 px-3.5 py-2 text-xs font-semibold text-white hover:bg-indigo-500 w-full">
               + Создать группу
             </button>
           </div>
 
-          <div id="groups-preview" class="mt-3 max-h-40 overflow-auto rounded bg-slate-50 p-2 text-xs text-slate-500">
+          <div id="groups-preview" class="mt-3 max-h-80 overflow-auto rounded bg-slate-50 p-2 text-xs text-slate-500">
             Группы не загружены
           </div>
+
+          <pre id="dictionary-result"
+               class="mt-3 hidden max-h-80 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100"></pre>
         </div>
 
-      </div>
+        <div class="rounded-lg border border-slate-200 p-4 lg:col-span-9">
+          <div class="flex flex-wrap items-center justify-between gap-3">
+            <span class="text-xs font-semibold uppercase tracking-wide text-slate-400">Кампании в локальной БД</span>
+            <span id="campaigns-count" class="text-xs text-slate-500"></span>
+          </div>
 
-      <pre id="dictionary-result"
-           class="mt-4 hidden max-h-60 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100"></pre>
-    </section>
+          <div class="mt-3 flex flex-wrap items-center gap-2 border-t border-slate-100 pt-3">
+            <label class="flex flex-1 items-center min-w-[160px]">
+              <span class="sr-only">Поиск кампаний</span>
+              <input id="campaign-search" type="search" autocomplete="off" placeholder="Поиск: название или ID"
+                     class="w-full rounded border border-slate-300 px-3 py-1.5 text-sm font-normal focus:border-indigo-400 focus:outline-none">
+            </label>
+            <button id="clear-search-btn"
+                    class="hidden rounded border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">
+              Сбросить
+            </button>
+            <button id="refresh-btn"
+                    class="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">
+              Обновить список
+            </button>
+          </div>
 
-    <!-- Кампании -->
-    <section class="rounded-lg bg-white p-6 shadow lg:col-span-12">
-      <div class="flex flex-wrap items-center justify-between gap-3">
-        <div>
-          <h2 class="text-lg font-semibold">Кампании в локальной БД</h2>
-          <p class="mt-0.5 text-sm text-slate-500">
-            Поиск идёт по локальному кешу: название или ID кампании в Keitaro.
-          </p>
+          <div class="mt-3 h-96 overflow-auto rounded border border-slate-200 bg-white">
+            <table class="w-full table-fixed border-collapse text-sm">
+              <colgroup>
+                <col style="width: 90px">
+                <col>
+                <col style="width: 100px">
+                <col style="width: 80px">
+                <col style="width: 130px">
+                <col style="width: 160px">
+              </colgroup>
+              <thead>
+                <tr class="bg-slate-100/80 text-left text-xs text-slate-500">
+                  <th class="border-b border-slate-200 p-2">ID</th>
+                  <th class="border-b border-slate-200 p-2">Название</th>
+                  <th class="border-b border-slate-200 p-2">Состояние</th>
+                  <th class="border-b border-slate-200 p-2">Тип</th>
+                  <th class="border-b border-slate-200 p-2">Синхронизирована</th>
+                  <th class="border-b border-slate-200 p-2">Действия</th>
+                </tr>
+              </thead>
+              <tbody id="campaigns-body">
+                <tr>
+                  <td colspan="6" class="p-3 text-center text-slate-400">Загрузка…</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <pre id="streams-result"
+               class="mt-3 hidden max-h-64 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100"></pre>
         </div>
-        <div class="flex flex-wrap items-center gap-2">
-          <label class="flex items-center">
-            <span class="sr-only">Поиск кампаний</span>
-            <input id="campaign-search" type="search" autocomplete="off" placeholder="Поиск: название или ID"
-                   class="w-56 rounded border border-slate-300 px-3 py-1.5 text-sm font-normal focus:border-indigo-400 focus:outline-none">
-          </label>
-          <button id="clear-search-btn"
-                  class="hidden rounded border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">
-            Сбросить
-          </button>
-          <span id="campaigns-count" class="text-xs text-slate-500"></span>
-          <button id="refresh-btn"
-                  class="rounded border border-slate-300 px-3 py-1.5 text-sm font-medium hover:bg-slate-50">
-            Обновить список
-          </button>
-          <button id="sync-btn"
-                  class="rounded bg-slate-900 px-3 py-1.5 text-sm font-medium text-white hover:bg-slate-700">
-            Синхронизировать с Keitaro
-          </button>
-        </div>
       </div>
-
-      <div class="mt-4 overflow-x-auto">
-        <table class="w-full border-collapse text-sm">
-          <thead>
-            <tr class="bg-slate-50 text-left text-slate-500">
-              <th class="border-b border-slate-200 p-2">ID</th>
-              <th class="border-b border-slate-200 p-2">Название</th>
-              <th class="border-b border-slate-200 p-2">Состояние</th>
-              <th class="border-b border-slate-200 p-2">Тип</th>
-              <th class="border-b border-slate-200 p-2">Синхронизирована</th>
-              <th class="border-b border-slate-200 p-2">Действия</th>
-            </tr>
-          </thead>
-          <tbody id="campaigns-body">
-            <tr>
-              <td colspan="6" class="p-3 text-center text-slate-400">Загрузка…</td>
-            </tr>
-          </tbody>
-        </table>
-      </div>
-
-      <pre id="streams-result"
-           class="mt-4 hidden max-h-64 overflow-auto rounded bg-slate-900 p-3 text-xs text-slate-100"></pre>
     </section>
   </main>
 
@@ -296,6 +301,7 @@
     const streamsResult = document.getElementById('streams-result');
     const campaignsBody = document.getElementById('campaigns-body');
     const streamsListEl = document.getElementById('streams-list');
+    const streamsCampaignNameEl = document.getElementById('streams-campaign-name');
     const editorPanelEl = document.getElementById('stream-editor-panel');
     const draftOffersBody = document.getElementById('draft-offers-body');
     const totalShareLabel = document.getElementById('total-share-label');
@@ -303,6 +309,7 @@
     const dirtyStream = document.getElementById('stream-editor-panel')
     const groupSelectEl = document.getElementById('group-select');
     const domainSelectEl = document.getElementById('domain-select');
+    const sourceSelectEl = document.getElementById('source-select');
     const domainGroupSelectEl = document.getElementById('domain-group-select');
     const groupsPreviewEl = document.getElementById('groups-preview');
     const domainsPreviewEl = document.getElementById('domains-preview');
@@ -310,8 +317,15 @@
     const campaignSearchEl = document.getElementById('campaign-search');
     const clearSearchBtn = document.getElementById('clear-search-btn');
     const campaignsCountEl = document.getElementById('campaigns-count');
+    const addOfferRowEl = document.getElementById('add-offer-row');
+    const offerEditorBodyEl = document.getElementById('offer-editor-body');
+    const offerlessNoteEl = document.getElementById('offerless-note');
+    const streamEditorActionsEl = document.getElementById('stream-editor-actions');
+    const pushToKtBtn = document.getElementById('push-to-kt-btn');
 
     let offersMap = new Map();
+    
+    const knownCampaignNames = new Map();
     let currentCampaignId = null;
     let loadedStreams = [];
     let activeStreamId = null;
@@ -341,10 +355,35 @@
       }
 
       lockedButtons.forEach((button) => {
+        if (isGated(button)) return; // блокировка по состоянию формы, а не из-за запроса
         button.disabled = false;
         button.classList.remove('opacity-60', 'cursor-not-allowed');
       });
       lockedButtons.clear();
+      updatePushButtonState();
+    }
+
+    function isGated(button) {
+      return button?.dataset?.gated === '1';
+    }
+
+    function updatePushButtonState() {
+      if (!pushToKtBtn) return;
+
+      const gated = !isDirty;
+      pushToKtBtn.dataset.gated = gated ? '1' : '0';
+      if (gated) {
+        pushToKtBtn.disabled = true;
+        pushToKtBtn.classList.add('opacity-60', 'cursor-not-allowed');
+        pushToKtBtn.title = 'Нет несохранённых изменений — нечего отправлять в Keitaro';
+        return;
+      }
+
+      pushToKtBtn.title = '';
+      if (pendingRequests === 0) {
+        pushToKtBtn.disabled = false;
+        pushToKtBtn.classList.remove('opacity-60', 'cursor-not-allowed');
+      }
     }
 
     function updateGlobalLoader() {
@@ -392,7 +431,24 @@
 
     function show(element, data) {
       element.classList.remove('hidden');
-      element.textContent = typeof data === 'string' ? data : JSON.stringify(data, null, 2);
+      element.textContent = typeof data === 'string' ? data : element.classList.add('hidden');
+    }
+
+    function hideResult(element) {
+      if (!element) return;
+      element.classList.add('hidden');
+      element.textContent = '';
+    }
+
+    function clearResultOnEdit(container, ...resultElements) {
+      if (!container) return;
+      const clear = () => {
+        resultElements.forEach((element) => {
+          if (element && !element.classList.contains('hidden')) hideResult(element);
+        });
+      };
+      container.addEventListener('input', clear);
+      container.addEventListener('change', clear);
     }
 
     function setBusy(button, busy, busyText = 'Выполняется…') {
@@ -401,10 +457,9 @@
         button.disabled = true;
         button.textContent = busyText;
       } else {
-        // если параллельно ещё идёт запрос — кнопку вернёт applyGlobalBusyState()
         if (pendingRequests > 0) {
           lockedButtons.add(button);
-        } else {
+        } else if (!isGated(button)) {
           button.disabled = false;
         }
         if (button.dataset.label) button.textContent = button.dataset.label;
@@ -415,6 +470,7 @@
       isDirty = dirty;
       dirtyBadge.classList.toggle('hidden', !dirty);
       dirtyStream.style.backgroundColor = dirty ? 'rgb(252 252 231)' : '';
+      updatePushButtonState();
     }
 
     function recalculateSharesEvenly(list) {
@@ -492,8 +548,31 @@
       totalShareLabel.className = sum === 100 ? 'font-semibold text-emerald-700' : 'font-semibold text-amber-700';
     }
 
-    function selectStreamForEditing(streamId) {
-      const stream = loadedStreams.find((s) => Number(s.id) === Number(streamId));
+    function isOfferlessStream(stream) {
+      const name = String((stream && stream.name) || '').toLowerCase();
+      return name.includes('geo filter') || name.includes('-> google');
+    }
+
+    function applyStreamOfferCapability(stream) {
+      const offerless = isOfferlessStream(stream);
+      if (addOfferRowEl) addOfferRowEl.classList.toggle('hidden', offerless);
+      if (offerEditorBodyEl) offerEditorBodyEl.classList.toggle('hidden', offerless);
+      if (streamEditorActionsEl) streamEditorActionsEl.classList.toggle('hidden', offerless);
+      if (offerlessNoteEl) offerlessNoteEl.classList.toggle('hidden', !offerless);
+    }
+
+    function findStreamIn(streams, streamRef) {
+      const value = Number(streamRef);
+      if (!value) return null;
+      return streams.find((s) => Number(s.id) === value || Number(s.keitaro_id) === value) || null;
+    }
+
+    function findStream(streamRef) {
+      return findStreamIn(loadedStreams, streamRef);
+    }
+
+    function selectStreamForEditing(streamRef) {
+      const stream = findStream(streamRef);
       if (!stream) return;
 
       activeStreamId = Number(stream.keitaro_id);
@@ -512,10 +591,13 @@
       setDirty(false);
 
       editorPanelEl.classList.remove('hidden');
+      hideResult(offerResult);
       document.getElementById('active-stream-title').textContent =
         `Поток #${stream.keitaro_id} · ${stream.name || 'Без названия'}`;
       document.getElementById('active-stream-meta').textContent =
         `Состояние: ${stream.state || '—'} · Тип: ${stream.type || '—'} · Действие: ${stream.action_type || '—'}`;
+
+      applyStreamOfferCapability(stream);
 
       renderStreamsButtons();
       renderDraftOffers();
@@ -544,9 +626,46 @@
       });
     }
 
-    async function fetchStreamsFromKT(campaignId, button = null) {
+    const PLACEHOLDER_CAMPAIGN_NAME = /^Campaign \d+$/;
+
+    function setStreamsCampaignName(name) {
+      const realName = name && !PLACEHOLDER_CAMPAIGN_NAME.test(name) ? name : '';
+      streamsCampaignNameEl.textContent = realName ? ` · ${realName}` : '';
+    }
+
+    async function updateStreamsCampaignName(keitaroId) {
+      const id = Number(keitaroId);
+      if (!id) {
+        setStreamsCampaignName('');
+        return;
+      }
+
+      const cached = knownCampaignNames.get(id);
+      setStreamsCampaignName(cached);
+      if (cached) return;
+
+      try {
+        const campaign = await api(`/campaigns/${id}`);
+        const name = campaign?.name || '';
+        if (name && !PLACEHOLDER_CAMPAIGN_NAME.test(name)) knownCampaignNames.set(id, name);
+        if (Number(currentCampaignId) === id) setStreamsCampaignName(name);
+      } catch (error) {
+        console.warn('Не удалось получить название кампании:', error.message);
+      }
+    }
+
+    function pickStreamToKeep(streams, preferredStreamId = null) {
+      return (
+        findStreamIn(streams, preferredStreamId)
+        || findStreamIn(streams, activeStreamId)
+        || streams[0]
+      );
+    }
+
+    async function fetchStreamsFromKT(campaignId, button = null, keepStreamId = null) {
       const targetId = Number(campaignId || document.getElementById('editor-campaign-id').value);
       if (!targetId) {
+        setStreamsCampaignName('');
         show(offerResult, 'Укажите ID кампании в Keitaro');
         return;
       }
@@ -558,12 +677,10 @@
         const streams = await api(`/campaigns/${targetId}/streams?source=keitaro`);
         loadedStreams = Array.isArray(streams) ? streams : (streams?.streams || []);
         renderStreamsButtons();
+        await updateStreamsCampaignName(targetId);
 
         if (loadedStreams.length) {
-          const keepId = loadedStreams.some((s) => Number(s.id) === Number(activeStreamId))
-            ? activeStreamId
-            : loadedStreams[0].id;
-          selectStreamForEditing(keepId);
+          selectStreamForEditing(pickStreamToKeep(loadedStreams, keepStreamId).id);
         } else {
           activeStreamId = null;
           editorPanelEl.classList.add('hidden');
@@ -655,7 +772,6 @@
       }
     }
 
-    /** Один ответ /api/groups подставляется во все селекты групп. */
     function fillGroupSelects(items) {
       if (groupSelectEl) fillSelect(groupSelectEl, items, '— не выбрана —');
       if (domainGroupSelectEl) fillSelect(domainGroupSelectEl, items, '— не выбрана —');
@@ -679,13 +795,24 @@
       }
     }
 
+    async function loadSources() {
+      try {
+        const sources = (await api('/api/sources')) || [];
+        if (sourceSelectEl) fillSelect(sourceSelectEl, sources, '— не выбран —');
+        return sources;
+      } catch (error) {
+        console.warn('Источники трафика недоступны:', error.message);
+        return [];
+      }
+    }
+
     async function refreshDictionaries() {
-      await Promise.all([loadGroups(), loadDomains()]);
+      await Promise.all([loadGroups(), loadDomains(), loadSources()]);
     }
 
     function renderCampaigns(campaigns, searchTerm = '') {
       campaignsBody.textContent = '';
-      campaignsCountEl.textContent = campaigns.length ? `Найдено: ${campaigns.length}` : '';
+      campaignsCountEl.textContent = campaigns.length ? `Загружено: ${campaigns.length}` : '';
       if (!campaigns.length) {
         const row = campaignsBody.insertRow();
         const cell = row.insertCell();
@@ -693,11 +820,15 @@
         cell.className = 'p-3 text-center text-slate-400';
         cell.textContent = searchTerm
           ? `Ничего не найдено по запросу «${searchTerm}»`
-          : 'Пусто — нажмите «Синхронизировать с Keitaro»';
+          : 'В локальном кеше кампаний пока нет — создайте кампанию или откройте потоки существующей';
         return;
       }
 
       campaigns.forEach((campaign) => {
+        const name = campaign.name || '';
+        if (name && !PLACEHOLDER_CAMPAIGN_NAME.test(name)) {
+          knownCampaignNames.set(Number(campaign.keitaro_id), name);
+        }
         const row = campaignsBody.insertRow();
         row.className = 'odd:bg-white even:bg-slate-50';
         [
@@ -706,28 +837,25 @@
           campaign.state || '—',
           campaign.type || '—',
           campaign.synced_at ? new Date(campaign.synced_at).toLocaleString('ru-RU') : '—',
-        ].forEach((value) => {
+        ].forEach((value, index) => {
           const cell = row.insertCell();
           cell.className = 'border-b border-slate-100 p-2';
           cell.textContent = value;
+          if (index === 1) {
+            cell.classList.add('truncate');
+            cell.title = value || '';
+          }
         });
 
         const actionCell = row.insertCell();
-        actionCell.className = 'border-b border-slate-100 p-2 flex flex-wrap gap-1.5';
+        actionCell.className = 'border-b border-slate-100 p-2';
 
         const editBtn = document.createElement('button');
         editBtn.type = 'button';
-        editBtn.className = 'rounded bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100';
+        editBtn.className = 'rounded bg-indigo-50 border border-indigo-200 px-2.5 py-1 text-xs font-medium text-indigo-700 hover:bg-indigo-100 w-full';
         editBtn.textContent = 'Редактировать потоки';
         editBtn.addEventListener('click', () => fetchStreamsFromKT(campaign.keitaro_id));
         actionCell.appendChild(editBtn);
-
-        const rawStreamsBtn = document.createElement('button');
-        rawStreamsBtn.type = 'button';
-        rawStreamsBtn.className = 'rounded border border-slate-300 px-2 py-1 text-xs hover:bg-slate-100';
-        rawStreamsBtn.textContent = 'JSON потоков';
-        rawStreamsBtn.addEventListener('click', () => loadStreamsRaw(campaign.keitaro_id));
-        actionCell.appendChild(rawStreamsBtn);
       });
     }
 
@@ -741,15 +869,6 @@
       } catch (error) {
         renderCampaigns([], search);
         show(streamsResult, 'Ошибка загрузки кампаний: ' + error.message);
-      }
-    }
-
-    async function loadStreamsRaw(keitaroId) {
-      try {
-        const streams = await api(`/campaigns/${keitaroId}/streams?source=keitaro`);
-        show(streamsResult, { campaign_id: keitaroId, streams });
-      } catch (error) {
-        show(streamsResult, 'Ошибка загрузки потоков: ' + error.message);
       }
     }
 
@@ -795,7 +914,12 @@
         show(offerResult, 'Выберите кампанию и поток для публикации');
         return;
       }
+      if (!isDirty) {
+        show(offerResult, 'Нет несохранённых изменений — сначала отредактируйте офферы потока');
+        return;
+      }
 
+      const editedStreamId = activeStreamId;
       setBusy(button, true, 'Публикуем…');
       try {
         const payload = {
@@ -805,12 +929,12 @@
             state: o.state || 'active',
           })),
         };
-        const result = await api(`/campaigns/${campaignId}/streams/${activeStreamId}/offers`, {
+        const result = await api(`/campaigns/${campaignId}/streams/${editedStreamId}/offers`, {
           method: 'POST',
           body: JSON.stringify(payload),
         });
         show(offerResult, result);
-        await fetchStreamsFromKT(campaignId);
+        await fetchStreamsFromKT(campaignId, null, editedStreamId);
         await loadCampaigns();
       } catch (error) {
         show(offerResult, 'Ошибка PUSH TO KT: ' + error.message);
@@ -821,14 +945,13 @@
 
     document.getElementById('create-form').addEventListener('submit', async (event) => {
       event.preventDefault();
-      const button = event.target.querySelector('button[type="submit"]');
-      const form = new FormData(event.target);
+      const formEl = event.target;
+      const button = formEl.querySelector('button[type="submit"]');
+      const form = new FormData(formEl);
       const payload = {
         name: String(form.get('name')).trim(),
-        alias: String(form.get('alias') || '').trim() || 'apitest',
         geo: String(form.get('geo')).trim().toUpperCase(),
         offer_id: Number(form.get('offer_id')),
-        action_type: 'http',
       };
       ['group_id', 'source_id', 'domain_id'].forEach((field) => {
         if (form.get(field)) payload[field] = Number(form.get(field));
@@ -840,10 +963,25 @@
           method: 'POST',
           body: JSON.stringify(payload),
         });
-        show(createResult, result.message);
+        
+        formEl.reset();
+        const nameInput = formEl.querySelector('input[name="name"]');
+        if (nameInput) nameInput.focus();
+        show(createResult, `${result.message}`);
         await loadCampaigns();
-        const createdId = result?.data?.campaign?.id || result?.campaign?.id;
-        if (createdId) {
+
+        const createdId = result?.campaign_id || result?.data?.campaign?.id;
+        const createdStreams = Array.isArray(result?.local_streams) ? result.local_streams : [];
+        if (createdId && createdStreams.length) {
+          currentCampaignId = Number(createdId);
+          document.getElementById('editor-campaign-id').value = createdId;
+          loadedStreams = createdStreams;
+          renderStreamsButtons();
+          await updateStreamsCampaignName(createdId);
+          const offerStream = createdStreams.find((s) => (s.offers || []).length) || createdStreams[0];
+          selectStreamForEditing(offerStream.id);
+          show(offerResult, { campaign_id: createdId, streams: createdStreams });
+        } else if (createdId) {
           await fetchStreamsFromKT(createdId);
         }
       } catch (error) {
@@ -910,23 +1048,16 @@
       loadCampaigns();
     });
 
-    document.getElementById('sync-btn').addEventListener('click', async (event) => {
-      const button = event.currentTarget;
-      setBusy(button, true, 'Синхронизация…');
-      try {
-        show(streamsResult, await api('/campaigns/sync', { method: 'POST' }));
-        await loadCampaigns();
-      } catch (error) {
-        show(streamsResult, 'Ошибка синхронизации: ' + error.message);
-      } finally {
-        setBusy(button, false);
-      }
-    });
+    clearResultOnEdit(document.getElementById('create-form'), createResult);
+    clearResultOnEdit(document.getElementById('editor-campaign-id'), offerResult);
+    clearResultOnEdit(offerEditorBodyEl, offerResult);
+    clearResultOnEdit(document.getElementById('new-group-name'), dictionariesResult);
 
     loadHealth();
     loadCampaigns();
     loadOffers();
     refreshDictionaries();
+    updatePushButtonState();
   </script>
 </body>
 </html>

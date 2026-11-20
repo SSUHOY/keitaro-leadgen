@@ -1,14 +1,3 @@
-"""FastAPI wrapper around the Keitaro tracker.
-
-The service pulls campaigns and streams from the Keitaro Admin API, stores
-them in a local database and exposes them through a REST API.
-
-Web UI (Tailwind) — ``GET /`` (the ``static/index.html`` file),
-static assets — ``/static/<file>``.
-
-Run: ``uvicorn main:app --reload`` from the ``keitaro_wrapper`` directory.
-"""
-
 from __future__ import annotations
 
 import logging
@@ -138,6 +127,51 @@ def _get_or_create_local_campaign(
     return campaign
 
 
+def _apply_campaign_payload(
+    campaign: Campaign,
+    payload: dict[str, Any] | None,
+    fallback_name: str | None = None,
+) -> None:
+    """Copy campaign fields from a Keitaro response into the local cache row.
+
+    ``payload`` may be empty: the create response of some Keitaro instances does
+    not return every field, so ``fallback_name`` (the name typed by the user)
+    keeps the row readable instead of the generic "Campaign <id>".
+    """
+    data = payload or {}
+    keitaro_id = _to_int(data.get("id")) or campaign.keitaro_id
+    campaign.keitaro_id = keitaro_id
+    campaign.name = (
+        _to_str(data.get("name"))
+        or fallback_name
+        or campaign.name
+        or f"Campaign {keitaro_id}"
+    )
+    campaign.state = _to_str(data.get("state"), 32)
+    campaign.type = _to_str(data.get("type"), 64)
+    campaign.group_id = _to_int(data.get("group_id"))
+    campaign.domain_id = _to_int(data.get("domain_id"))
+    campaign.keitaro_updated_at = parse_keitaro_datetime(data.get("updated_at"))
+    if data:
+        campaign.raw = data
+    campaign.synced_at = utcnow()
+
+
+def _refresh_campaign_name(api: KeitaroAPI, campaign: Campaign) -> None:
+    """Best-effort: fill the campaign name when the cached one is still a placeholder.
+
+    Some Keitaro instances do not serve ``GET /campaigns/{id}``, so any failure is
+    ignored: the editor keeps the generic name instead of breaking the request.
+    """
+    if campaign.name and campaign.name != f"Campaign {campaign.keitaro_id}":
+        return
+
+    try:
+        _apply_campaign_payload(campaign, api.get_campaign(campaign.keitaro_id))
+    except KeitaroAPIError as exc:
+        logger.warning("Не удалось получить кампанию %s: %s", campaign.keitaro_id, exc)
+
+
 def _merge_offers_into_raw(new_raw: dict[str, Any], previous_raw: Any) -> dict[str, Any]:
     if "offers" in new_raw or not isinstance(previous_raw, dict):
         return new_raw
@@ -163,8 +197,7 @@ def _drop_other_stream_rows(db: Session, stream_obj: Stream | None, keitaro_id: 
         return
     for row in obsolete:
         db.delete(row)
-    # Persist the deletions right away: otherwise the INSERT/UPDATE of the new
-    # row may collide with the unique index (campaign_id, keitaro_id)
+    
     db.flush()
 
 
@@ -197,8 +230,6 @@ def _persist_stream_snapshot(
     _drop_other_stream_rows(db, stream_obj, stream_kt_id)
     if created:
         db.add(stream_obj)
-        # autoflush is disabled, so persist the insert: otherwise the next
-        # snapshot in the same session won't find the stream and will create a duplicate
         db.flush()
     elif stream_obj.campaign_id != campaign.id:
         stream_obj.campaign_id = campaign.id
@@ -240,14 +271,7 @@ def sync_campaigns(db: Session, api: KeitaroAPI) -> SyncResult:
         else:
             stats["campaigns_updated"] += 1
 
-        campaign.name = _to_str(payload.get("name")) or f"Campaign {keitaro_id}"
-        campaign.state = _to_str(payload.get("state"), 32)
-        campaign.type = _to_str(payload.get("type"), 64)
-        campaign.group_id = _to_int(payload.get("group_id"))
-        campaign.domain_id = _to_int(payload.get("domain_id"))
-        campaign.keitaro_updated_at = parse_keitaro_datetime(payload.get("updated_at"))
-        campaign.raw = payload
-        campaign.synced_at = utcnow()
+        _apply_campaign_payload(campaign, payload)
         db.flush()
 
         try:
@@ -279,7 +303,7 @@ def _get_campaign_or_404(db: Session, keitaro_id: int) -> Campaign:
     if campaign is None:
         msg = (
             f"Кампания {keitaro_id} не найдена в локальной БД — "
-            "выполните POST /campaigns/sync"
+            f"запросите её потоки: GET /campaigns/{keitaro_id}/streams?source=keitaro"
         )
         raise HTTPException(status_code=404, detail=msg)
     return campaign
@@ -314,19 +338,6 @@ def health(
 def keitaro_ping(api: KeitaroAPI = Depends(get_keitaro_api)) -> KeitaroPingOut:
     api.ping()
     return KeitaroPingOut(status="ok", base_url=api.base_url)
-
-
-@app.post(
-    "/campaigns/sync",
-    response_model=SyncResult,
-    tags=["campaigns"],
-    summary="Sync campaigns and streams from Keitaro",
-)
-def campaigns_sync(
-    db: Session = Depends(get_db),
-    api: KeitaroAPI = Depends(get_keitaro_api),
-) -> SyncResult:
-    return sync_campaigns(db, api)
 
 
 @app.get(
@@ -395,6 +406,7 @@ def list_campaign_streams(
         campaign = db.scalar(select(Campaign).where(Campaign.keitaro_id == keitaro_id))
         if campaign is None:
             campaign = _get_or_create_local_campaign(db, keitaro_id)
+        _refresh_campaign_name(api, campaign)
         for raw_stream in api.get_streams(keitaro_id):
             _persist_stream_snapshot(db, raw_stream, campaign)
         db.commit()
@@ -419,6 +431,19 @@ def api_get_offers(api: KeitaroAPI = Depends(get_keitaro_api)):
         return api.get_offers()
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"Не удалось получить офферы: {e}")
+
+
+@app.get(
+    "/api/sources",
+    tags=["creators"],
+    summary="Keitaro traffic source list (for selectors)",
+)
+def api_get_sources(api: KeitaroAPI = Depends(get_keitaro_api)):
+    """Traffic source from Keitaro — render "Creator" select options."""
+    try:
+        return api.get_sources()
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Не удалось получить источники трафика: {e}")
 
 
 GROUP_TYPES = ("campaigns", "offers", "landings", "domains")
@@ -530,32 +555,59 @@ def create_campaign_wrapper(
 1. A campaign with a name, group, traffic source and domain.
 2. Stream 1: a country filter (Geo) -> google.com.
 3. Stream 2: the main stream with the selected offer.
-    After creation it automatically syncs this campaign into the local DB.
     """
+    name = payload.name.strip()
+    geo = payload.geo.strip().upper()
+    if not name:
+        raise HTTPException(status_code=400, detail="Название кампании не может быть пустым")
+    if not geo:
+        raise HTTPException(status_code=400, detail="Geo-код страны не может быть пустым")
+
+    timer = StepTimer("create_campaign_wrapper")
     try:
-        result = api.setup_campaign_with_two_streams(
-            name=payload.name,
-            geo=payload.geo,
-            offer_id=payload.offer_id,
-            group_id=payload.group_id,
-            source_id=payload.source_id,
-            domain_id=payload.domain_id,
-        )
+        with timer.measure("kt_create_campaign_and_streams"):
+            result = api.setup_campaign_with_two_streams(
+                name=name,
+                geo=geo,
+                offer_id=payload.offer_id,
+                group_id=payload.group_id,
+                source_id=payload.source_id,
+                domain_id=payload.domain_id,
+            )
 
-        sync_campaigns(db, api)
+        raw_campaign = result.get("campaign") if isinstance(result, dict) else None
+        created_id = _to_int(raw_campaign.get("id")) if isinstance(raw_campaign, dict) else None
 
-        created_campaign = result.get("campaign") if isinstance(result, dict) else None
-        created_id = created_campaign.get("id") if isinstance(created_campaign, dict) else None
+        local_campaign: Campaign | None = None
+        persisted_streams: list[Stream] = []
+        with timer.measure("db_cache_created_campaign"):
+            if created_id is not None:
+                local_campaign = _get_or_create_local_campaign(db, created_id, name=name)
+                _apply_campaign_payload(local_campaign, raw_campaign, fallback_name=name)
+                for raw_stream in (result.get("streams") or []):
+                    if isinstance(raw_stream, dict):
+                        stream_obj, _ = _persist_stream_snapshot(db, raw_stream, local_campaign)
+                        persisted_streams.append(stream_obj)
+            db.commit()
+
+        timer.log(f"campaign={created_id}")
 
         return {
             "status": "success",
-            "message": "Кампания успешно создана в Keitaro и синхронизирована",
+            "message": "Кампания создана в Keitaro, можно редактировать потоки в правом окне",
             "data": result,
             "campaign_id": created_id,
+            "local_campaign": (
+                CampaignOut.model_validate(local_campaign) if local_campaign else None
+            ),
+            "local_streams": [StreamOut.model_validate(stream) for stream in persisted_streams],
+            "timings_ms": {**timer.timings_ms, "total": timer.total_ms},
         }
     except KeitaroAPIError as e:
+        timer.log("error=KeitaroAPIError")
         raise HTTPException(status_code=e.status_code or 500, detail=str(e))
     except Exception as e:
+        timer.log("error=Exception")
         raise HTTPException(status_code=500, detail=f"Внутренняя ошибка создания кампании: {e}")
 
 
@@ -657,7 +709,6 @@ def upsert_stream_from_keitaro(
     try:
         raw_stream = api.get_stream(keitaro_stream_id)
     except KeitaroAPIError:
-        # If PUT already succeeded but GET unexpectedly failed, reuse the dict from the PUT response
         if isinstance(fallback_stream, dict) and fallback_stream:
             raw_stream = fallback_stream
         else:
